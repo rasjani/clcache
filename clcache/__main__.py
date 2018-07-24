@@ -282,6 +282,14 @@ def allSectionsLocked(repository):
             section.lock.release()
 
 
+def readPchHash(pchFile):
+    with open(pchFile+".clcache", 'r') as f:
+        return f.read()
+
+def writePchHash(pchFile, hashSum):
+    with open(pchFile+".clcache", 'w') as f:
+        f.write('{}'.format(hashSum))
+
 class ManifestRepository:
     # Bump this counter whenever the current manifest file format changes.
     # E.g. changing the file format from {'oldkey': ...} to {'newkey': ...} requires
@@ -344,6 +352,10 @@ class ManifestRepository:
 
         additionalData = "{}|{}|{}".format(
             compilerHash, commandLine, ManifestRepository.MANIFEST_FILE_FORMAT_VERSION)
+
+        if 'Yu' in arguments:
+            pchFile = CommandLineAnalyzer.getPchFileName(arguments, sourceFile)
+            additionalData += readPchHash(pchFile)
         return getFileHash(sourceFile, additionalData)
 
     @staticmethod
@@ -531,6 +543,10 @@ class CompilerArtifactsRepository:
         h.update(' '.join(normalizedCmdLine).encode("UTF-8"))
         h.update(preprocessedSourceCode)
         return h.hexdigest()
+
+    @staticmethod
+    def computePchKey(cacheKey):
+        return cacheKey + "-pch"
 
     @staticmethod
     def _normalizedCommandLine(cmdline):
@@ -1336,6 +1352,20 @@ class CommandLineAnalyzer:
         return dict(arguments), inputFiles
 
     @staticmethod
+    def getPchFileName(options, inputFile):
+        if 'Fp' in options:
+            return options['Fp'][0]
+        if 'Yc' in options:
+            headerName = options['Yc'][0]
+        elif 'Yu' in options:
+            headerName = options['Yu'][0]
+        else:
+            return None
+        if not headerName:
+            headerName = inputFile
+        return basenameWithoutExtension(headerName) + '.pch'
+
+    @staticmethod
     def analyze(cmdline: List[str]) -> Tuple[List[Tuple[str, str]], List[str]]:
         options, inputFiles = CommandLineAnalyzer.parseArgumentsAndInputFiles(cmdline)
         # Use an override pattern to shadow input files that have
@@ -1363,9 +1393,6 @@ class CommandLineAnalyzer:
         if 'Zi' in options:
             raise ExternalDebugInfoError()
 
-        if 'Yc' in options or 'Yu' in options:
-            raise CalledWithPchError()
-
         if 'link' in options or 'c' not in options:
             raise CalledForLinkError()
 
@@ -1384,6 +1411,10 @@ class CommandLineAnalyzer:
         if objectFiles is None:
             # Generate from .c/.cpp filenames
             objectFiles = [os.path.join(prefix, basenameWithoutExtension(f)) + '.obj' for f, _ in inputFiles]
+
+        if 'Yc' in options:
+            objectFiles = [(objectFile, CommandLineAnalyzer.getPchFileName(options, inputFile[0]))
+                           for inputFile, objectFile in zip(inputFiles, objectFiles)]
 
         printTraceStatement("Compiler source files: {}".format(inputFiles))
         printTraceStatement("Compiler object file: {}".format(objectFiles))
@@ -1560,6 +1591,7 @@ def addObjectToCache(stats, cache, cachekey, artifacts):
 
 def processCacheHit(cache, objectFile, cachekey):
     printTraceStatement("Reusing cached object for key {} for object file {}".format(cachekey, objectFile))
+    objectFile, pchFile = objectFile if isinstance(objectFile, tuple) else (objectFile, None)
 
     with cache.lockFor(cachekey):
         with cache.statistics.lock, cache.statistics as stats:
@@ -1570,6 +1602,11 @@ def processCacheHit(cache, objectFile, cachekey):
 
         cachedArtifacts = cache.getEntry(cachekey)
         copyOrLink(cachedArtifacts.objectFilePath, objectFile)
+        if pchFile is not None:
+            pchCachedArtifacts = cache.getEntry(CompilerArtifactsRepository.computePchKey(cachekey))
+            copyOrLink(pchCachedArtifacts.objectFilePath, pchFile)
+            writePchHash(pchFile, cachekey)
+
         printTraceStatement("Finished. Exit code 0")
         return 0, cachedArtifacts.stdout, cachedArtifacts.stderr, False
 
@@ -1833,6 +1870,8 @@ def processNoDirect(cache, objectFile, compiler, cmdLine, environment):
 def ensureArtifactsExist(cache, cachekey, reason, objectFile, compilerResult, extraCallable=None):
     cleanupRequired = False
     returnCode, compilerOutput, compilerStderr = compilerResult
+    objectFile, pchFile = objectFile if isinstance(objectFile, tuple) else (objectFile, None)
+
     correctCompiliation = (returnCode == 0 and os.path.exists(objectFile))
     with cache.lockFor(cachekey):
         if not cache.hasEntry(cachekey):
@@ -1843,6 +1882,17 @@ def ensureArtifactsExist(cache, cachekey, reason, objectFile, compilerResult, ex
                     cleanupRequired = addObjectToCache(stats, cache, cachekey, artifacts)
             if extraCallable and correctCompiliation:
                 extraCallable()
+
+    if pchFile:
+        writePchHash(pchFile, cachekey)
+        cachekey = CompilerArtifactsRepository.computePchKey(cachekey)
+        with cache.lockFor(cachekey):
+            if not cache.hasEntry(cachekey):
+                with cache.statistics.lock, cache.statistics as stats:
+                    if correctCompiliation:
+                        artifacts = CompilerArtifacts(pchFile, "", "")
+                        cleanupRequired = addObjectToCache(stats, cache, cachekey, artifacts) or cleanupRequired
+
     return returnCode, compilerOutput, compilerStderr, cleanupRequired
 
 
