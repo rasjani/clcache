@@ -577,6 +577,13 @@ class TestAnalyzeCommandLine(unittest.TestCase):
                        [('main.cpp', '')], ['main.obj'])
         # For preprocessor file
         self._testFailure(['/c', '/P', 'main.cpp'], CalledForPreprocessingError)
+        # For precompiled header
+        self._testFull(['/c', '/Yc', 'stdafx.cpp'], [('stdafx.cpp', '')],
+                       [('stdafx.obj', 'stdafx.pch')])
+        self._testFull(['/c', '/Yccommon.h', 'stdafx.cpp'], [('stdafx.cpp', '')],
+                       [('stdafx.obj', 'common.pch')])
+        self._testFull(['/c', '/Yc', r'/Fpoutput\common.pch', 'stdafx.cpp'],
+                       [('stdafx.cpp', '')], [('stdafx.obj', r'output\common.pch')])
 
     def testPreprocessIgnoresOtherArguments(self):
         # All those inputs must ignore the /Fo, /Fa and /Fm argument according
