@@ -957,7 +957,6 @@ class TestClearing(unittest.TestCase):
             self.assertEqual(stats.numCacheEntries(), 0)
             self.assertEqual(stats.numCallsWithoutSourceFile(), oldStats.numCallsWithoutSourceFile())
             self.assertEqual(stats.numCallsWithMultipleSourceFiles(), oldStats.numCallsWithMultipleSourceFiles())
-            self.assertEqual(stats.numCallsWithPch(), oldStats.numCallsWithPch())
             self.assertEqual(stats.numCallsForLinking(), oldStats.numCallsForLinking())
             self.assertEqual(stats.numCallsForPreprocessing(), oldStats.numCallsForPreprocessing())
             self.assertEqual(stats.numCallsForExternalDebugInfo(), oldStats.numCallsForExternalDebugInfo())
@@ -995,8 +994,6 @@ class TestAnalysisErrorsCalls(unittest.TestCase):
             subprocess.check_call(baseCmd + ['/c', '/Tcfibonacci.c', "minimal.cpp"])
             # CalledForLinkError
             subprocess.check_call(baseCmd + ["fibonacci.cpp"])
-            # CalledWithPchError
-            subprocess.check_call(baseCmd + ['/c', '/Yc', "minimal.cpp"])
             # ExternalDebugInfoError
             subprocess.check_call(baseCmd + ['/c', '/Zi', "minimal.cpp"])
             # CalledForPreprocessingError
