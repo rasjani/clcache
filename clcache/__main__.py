@@ -1687,7 +1687,13 @@ def scheduleJobs(cache: Any, compiler: str, cmdLine: List[str], environment: Any
 
     exitCode = 0
     cleanupRequired = False
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobCount(cmdLine)) as executor:
+
+    def poolExecutor(*args, **kwargs) -> concurrent.futures.Executor:
+        if isTrackerEnabled():
+            return concurrent.futures.ProcessPoolExecutor(*args, **kwargs)
+        return concurrent.futures.ThreadPoolExecutor(*args, **kwargs)
+
+    with poolExecutor(max_workers=min(jobCount(cmdLine), len(objectFiles))) as executor:
         jobs = []
         for (srcFile, srcLanguage), objFile in zip(sourceFiles, objectFiles):
             jobCmdLine = baseCmdLine + [srcLanguage + srcFile]
