@@ -118,6 +118,52 @@ def normalizeBaseDir(baseDir):
         return None
 
 
+class SuspendTracker():
+    fileTracker = None
+    def __init__(self):
+        if not SuspendTracker.fileTracker:
+            if windll.kernel32.GetModuleHandleW("FileTracker.dll"):
+                SuspendTracker.fileTracker = windll.FileTracker
+            elif windll.kernel32.GetModuleHandleW("FileTracker32.dll"):
+                SuspendTracker.fileTracker = windll.FileTracker32
+
+    def __enter__(self):
+        SuspendTracker.suspend()
+
+    def __exit__(self, typ, value, traceback):
+        SuspendTracker.resume()
+
+    @staticmethod
+    def suspend():
+        if SuspendTracker.fileTracker:
+            SuspendTracker.fileTracker.SuspendTracking()
+
+    @staticmethod
+    def resume():
+        if SuspendTracker.fileTracker:
+            SuspendTracker.fileTracker.ResumeTracking()
+
+def isTrackerEnabled():
+    return 'TRACKER_ENABLED' in os.environ
+
+def untrackable(func):
+    if not isTrackerEnabled():
+        return func
+
+    def untrackedFunc(*args, **kwargs):
+        with SuspendTracker():
+            return func(*args, **kwargs)
+
+    return untrackedFunc
+
+@contextlib.contextmanager
+def atomicWrite(fileName):
+    tempFileName = fileName + '.new'
+    with open(tempFileName, 'w') as f:
+        yield f
+    os.replace(tempFileName, fileName)
+
+
 def getCachedCompilerConsoleOutput(path):
     try:
         with open(path, 'rb') as f:
@@ -187,6 +233,7 @@ class ManifestSection:
     def manifestFiles(self):
         return filesBeneath(self.manifestSectionDir)
 
+    @untrackable
     def setManifest(self, manifestHash, manifest):
         manifestPath = self.manifestPath(manifestHash)
         printTraceStatement("Writing manifest with manifestHash = {} to {}".format(manifestHash, manifestPath))
@@ -197,6 +244,7 @@ class ManifestSection:
             jsonobject = {'entries': entries}
             json.dump(jsonobject, outFile, sort_keys=True, indent=2)
 
+    @untrackable
     def getManifest(self, manifestHash):
         fileName = self.manifestPath(manifestHash)
         if not os.path.exists(fileName):
@@ -737,6 +785,7 @@ class Statistics:
         self._stats = None
         self.lock = CacheLock.forPath(self._statsFile)
 
+    @untrackable
     def __enter__(self):
         self._stats = PersistentJSONDict(self._statsFile)
         for k in Statistics.RESETTABLE_KEYS | Statistics.NON_RESETTABLE_KEYS:
@@ -744,6 +793,7 @@ class Statistics:
                 self._stats[k] = 0
         return self
 
+    @untrackable
     def __exit__(self, typ, value, traceback):
         # Does not write to disc when unchanged
         self._stats.save()
@@ -1657,7 +1707,13 @@ def scheduleJobs(cache: Any, compiler: str, cmdLine: List[str], environment: Any
 
     exitCode = 0
     cleanupRequired = False
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobCount(cmdLine)) as executor:
+
+    def poolExecutor(*args, **kwargs) -> concurrent.futures.Executor:
+        if isTrackerEnabled():
+            return concurrent.futures.ProcessPoolExecutor(*args, **kwargs)
+        return concurrent.futures.ThreadPoolExecutor(*args, **kwargs)
+
+    with poolExecutor(max_workers=min(jobCount(cmdLine), len(objectFiles))) as executor:
         jobs = []
         for (srcFile, srcLanguage), objFile in zip(sourceFiles, objectFiles):
             jobCmdLine = baseCmdLine + [srcLanguage + srcFile]
