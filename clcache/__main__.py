@@ -124,10 +124,17 @@ class SuspendTracker():
         if not SuspendTracker.fileTracker:
             if windll.kernel32.GetModuleHandleW("FileTracker.dll"):
                 SuspendTracker.fileTracker = windll.FileTracker
+                printTraceStatement("Using FileTracker")
+                return
             elif windll.kernel32.GetModuleHandleW("FileTracker32.dll"):
                 SuspendTracker.fileTracker = windll.FileTracker32
+                printTraceStatement("Using FileTracker32")
+                return
             elif windll.kernel32.GetModuleHandleW("FileTracker64.dll"):
                 SuspendTracker.fileTracker = windll.FileTracker64
+                printTraceStatement("Using FileTracker64")
+                return
+            printTraceStatement("FileTracker not defined")
 
     def __enter__(self):
         SuspendTracker.suspend()
