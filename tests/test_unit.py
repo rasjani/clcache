@@ -173,7 +173,6 @@ class TestStatistics(unittest.TestCase):
             self.assertEqual(s.numCallsWithInvalidArgument(), 0)
             self.assertEqual(s.numCallsWithoutSourceFile(), 0)
             self.assertEqual(s.numCallsWithMultipleSourceFiles(), 0)
-            self.assertEqual(s.numCallsWithPch(), 0)
             self.assertEqual(s.numCallsForLinking(), 0)
             self.assertEqual(s.numCallsForExternalDebugInfo(), 0)
             self.assertEqual(s.numEvictedMisses(), 0)
@@ -187,7 +186,6 @@ class TestStatistics(unittest.TestCase):
             s.registerCallWithInvalidArgument()
             s.registerCallWithoutSourceFile()
             s.registerCallWithMultipleSourceFiles()
-            s.registerCallWithPch()
             s.registerCallForLinking()
             s.registerCallForExternalDebugInfo()
             s.registerEvictedMiss()
@@ -200,7 +198,6 @@ class TestStatistics(unittest.TestCase):
             self.assertEqual(s.numCallsWithInvalidArgument(), 1)
             self.assertEqual(s.numCallsWithoutSourceFile(), 1)
             self.assertEqual(s.numCallsWithMultipleSourceFiles(), 1)
-            self.assertEqual(s.numCallsWithPch(), 1)
             self.assertEqual(s.numCallsForLinking(), 1)
             self.assertEqual(s.numCallsForExternalDebugInfo(), 1)
             self.assertEqual(s.numEvictedMisses(), 1)
@@ -577,6 +574,13 @@ class TestAnalyzeCommandLine(unittest.TestCase):
                        [('main.cpp', '')], ['main.obj'])
         # For preprocessor file
         self._testFailure(['/c', '/P', 'main.cpp'], CalledForPreprocessingError)
+        # For precompiled header
+        self._testFull(['/c', '/Yc', 'stdafx.cpp'], [('stdafx.cpp', '')],
+                       [('stdafx.obj', 'stdafx.pch')])
+        self._testFull(['/c', '/Yccommon.h', 'stdafx.cpp'], [('stdafx.cpp', '')],
+                       [('stdafx.obj', 'common.pch')])
+        self._testFull(['/c', '/Yc', r'/Fpoutput\common.pch', 'stdafx.cpp'],
+                       [('stdafx.cpp', '')], [('stdafx.obj', r'output\common.pch')])
 
     def testPreprocessIgnoresOtherArguments(self):
         # All those inputs must ignore the /Fo, /Fa and /Fm argument according
