@@ -636,14 +636,14 @@ class CacheFileStrategy:
     def getManifest(self, manifestHash):
         return self.manifestRepository.section(manifestHash).getManifest(manifestHash)
 
-    def clean(self, stats, maximumSize):
+    def clean(self, stats, maximumSize, cleanFactor):
         currentSize = stats.currentCacheSize()
         if currentSize < maximumSize:
             return
 
         # Free at least 10% to avoid cleaning up too often which
         # is a big performance hit with large caches.
-        effectiveMaximumSizeOverall = maximumSize * 0.9
+        effectiveMaximumSizeOverall = maximumSize * cleanFactor
 
         # Split limit in manifests (10 %) and objects (90 %)
         effectiveMaximumSizeManifests = effectiveMaximumSizeOverall * 0.1
@@ -689,8 +689,8 @@ class Cache:
     def statistics(self):
         return self.strategy.statistics
 
-    def clean(self, stats, maximumSize):
-        return self.strategy.clean(stats, maximumSize)
+    def clean(self, stats, maximumSize, cleanFactor = 0.9):
+        return self.strategy.clean(stats, maximumSize, cleanFactor)
 
     @contextlib.contextmanager
     def lockFor(self, key):
@@ -1512,9 +1512,9 @@ def resetStatistics(cache):
         stats.resetCounters()
 
 
-def cleanCache(cache):
+def cleanCache(cache, cleanFactor = 0.9):
     with cache.lock, cache.statistics as stats, cache.configuration as cfg:
-        cache.clean(stats, cfg.maximumCacheSize())
+        cache.clean(stats, cfg.maximumCacheSize(), cleanFactor)
 
 
 def clearCache(cache):
@@ -1614,7 +1614,7 @@ def main():
 clcache.py v{}
   --help    : show this help
   -s        : print cache statistics
-  -c        : clean cache
+  -c [x]    : clean cache (x = clean factor 0.0-1.0, default 0.9)
   -C        : clear cache
   -z        : reset cache statistics
   -M <size> : set maximum cache size (in bytes)
@@ -1629,6 +1629,11 @@ clcache.py v{}
 
     if len(sys.argv) == 2 and sys.argv[1] == "-c":
         cleanCache(cache)
+        print('Cache cleaned')
+        return 0
+
+    if len(sys.argv) == 3 and sys.argv[1] == "-c":
+        cleanCache(cache, float(sys.argv[2]))
         print('Cache cleaned')
         return 0
 
