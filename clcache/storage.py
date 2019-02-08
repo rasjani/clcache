@@ -151,10 +151,11 @@ class CacheMemcacheStrategy:
     def getManifest(self, manifestHash):
         return self.client.get((self.manifestPrefix + manifestHash).encode("UTF-8"))
 
-    def clean(self, stats, maximumSize, cleanFactor):
+    def clean(self, stats, maximumSize, cleanFactor, force):
         self.fileStrategy.clean(stats,
                                 maximumSize,
-                                cleanFactor)
+                                cleanFactor,
+                                force)
 
 
 class CacheFileWithMemcacheFallbackStrategy:
@@ -225,7 +226,8 @@ class CacheFileWithMemcacheFallbackStrategy:
         with self.remoteCache.lock, self.localCache.lock:
             yield
 
-    def clean(self, stats, maximumSize, cleanFactor):
+    def clean(self, stats, maximumSize, cleanFactor, force):
         self.localCache.clean(stats,
                               maximumSize,
-							  cleanFactor)
+							  cleanFactor,							  
+							  force)
