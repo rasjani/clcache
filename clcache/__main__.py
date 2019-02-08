@@ -689,7 +689,7 @@ class Cache:
     def statistics(self):
         return self.strategy.statistics
 
-    def clean(self, stats, maximumSize, cleanFactor = 0.9):
+    def clean(self, stats, maximumSize, cleanFactor):
         return self.strategy.clean(stats, maximumSize, cleanFactor)
 
     @contextlib.contextmanager
@@ -1764,7 +1764,8 @@ def scheduleJobs(cache: Any, compiler: str, cmdLine: List[str], environment: Any
                 break
 
     if cleanupRequired:
-        cleanCache(cache)
+        if "CLCACHE_DISABLE_AUTOCLEAN" not in os.environ:
+            cleanCache(cache)
 
     return exitCode
 
