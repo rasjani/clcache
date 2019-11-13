@@ -5,7 +5,7 @@ import os
 from setuptools import setup, find_packages
 
 setup(
-    name='clcache',
+    name='clcache-alt',
     description='MSVC compiler cache',
     author='Frerich Raabe',
     author_email='raabe@froglogic.com',
